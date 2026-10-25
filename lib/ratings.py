@@ -81,32 +81,15 @@ def validate_rating(value: Optional[int], scale: int) -> int:
 
 
 GET_USER_SETTINGS = """
-SELECT rating_scale, scale_notice_seen FROM user_settings WHERE user_id = ?;
+SELECT rating_scale FROM user_settings WHERE user_id = ?;
 """
 
 UPSERT_RATING_SCALE = """
-INSERT INTO user_settings (user_id, rating_scale, scale_notice_seen)
-VALUES (?, ?, 1)
+INSERT INTO user_settings (user_id, rating_scale)
+VALUES (?, ?)
 ON CONFLICT(user_id) DO UPDATE SET
     rating_scale = excluded.rating_scale,
-    scale_notice_seen = 1,
     updated_at = CURRENT_TIMESTAMP;
-"""
-
-MARK_SCALE_NOTICE_SEEN = """
-INSERT INTO user_settings (user_id, scale_notice_seen)
-VALUES (?, 1)
-ON CONFLICT(user_id) DO UPDATE SET
-    scale_notice_seen = 1,
-    updated_at = CURRENT_TIMESTAMP;
-"""
-
-# True when the user rated anything before scales existed. Only rows on the
-# legacy scale count, so a user who has rated since does not re-qualify.
-HAS_LEGACY_RATINGS = """
-SELECT 1 FROM reading_logs
-WHERE user_id = ? AND user_rating IS NOT NULL AND rating_scale = 5
-LIMIT 1;
 """
 
 
@@ -126,16 +109,3 @@ async def set_user_scale(bot, user_id: int, scale: int) -> None:
     if not is_valid_scale(scale):
         raise ValueError(f"unsupported scale {scale!r}")
     await bot.RUN(UPSERT_RATING_SCALE, (user_id, scale))
-
-
-async def needs_scale_notice(bot, user_id: int) -> bool:
-    """A user who rated on the old 5-point scale and has not chosen a scale
-    since is told once that the default is now 10."""
-    row = await bot.GET_ONE(GET_USER_SETTINGS, (user_id,))
-    if row and (row[1] or is_valid_scale(row[0])):
-        return False
-    return bool(await bot.GET_ONE(HAS_LEGACY_RATINGS, (user_id,)))
-
-
-async def mark_scale_notice_seen(bot, user_id: int) -> None:
-    await bot.RUN(MARK_SCALE_NOTICE_SEEN, (user_id,))

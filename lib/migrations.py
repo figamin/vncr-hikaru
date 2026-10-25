@@ -1102,7 +1102,6 @@ async def _create_user_settings_table(bot) -> None:
         CREATE TABLE IF NOT EXISTS user_settings (
             user_id INTEGER PRIMARY KEY,
             rating_scale INTEGER,
-            scale_notice_seen INTEGER NOT NULL DEFAULT 0,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         """

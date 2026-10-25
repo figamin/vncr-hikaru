@@ -48,8 +48,6 @@ from lib.ratings import (
     format_rating,
     get_saved_scale,
     get_user_scale,
-    mark_scale_notice_seen,
-    needs_scale_notice,
     set_user_scale,
     validate_rating,
 )
@@ -1106,20 +1104,6 @@ class VNUserCommands(commands.Cog):
             content_lines: list[str] = []
             if newly_unlocked:
                 content_lines.append("🎉 Earned: " + ", ".join(newly_unlocked))
-            # Members who rated on the old 5-point scale are told once that the
-            # default changed, with the value as saved so a habitual "4" is
-            # easy to spot and fix.
-            try:
-                if await needs_scale_notice(self.bot, interaction.user.id):
-                    content_lines.append(
-                        f"ℹ️ Ratings are now out of {scale} by default, so this one "
-                        f"was saved as **{format_rating(rating, scale)}**. Use "
-                        "`/settings` to pick 5, 10 or 100, and `/log_edit` "
-                        f"to change log #{log_id}."
-                    )
-                    await mark_scale_notice_seen(self.bot, interaction.user.id)
-            except Exception as e:  # noqa: BLE001
-                _log.debug("scale notice check failed: %s", e)
             content_text: Optional[str] = "\n".join(content_lines) or None
 
             message = await interaction.followup.send(
@@ -2075,17 +2059,9 @@ class VNUserCommands(commands.Cog):
             # rating is read on the owner's current scale and re-stamps it.
             new_comment = comment if comment is not None else current_comment
             new_rating, new_scale = current_rating, current_scale
-            show_scale_notice = False
             if rating is not None:
                 new_scale = await get_user_scale(self.bot, user_id)
                 new_rating = validate_rating(rating, new_scale)
-                # Checked before the write: re-rating the last legacy log
-                # would otherwise clear the condition the notice looks for.
-                if user_id == interaction.user.id:
-                    try:
-                        show_scale_notice = await needs_scale_notice(self.bot, user_id)
-                    except Exception as e:  # noqa: BLE001
-                        _log.debug("scale notice check failed: %s", e)
 
             # Update the log
             await self.bot.RUN(
@@ -2121,15 +2097,6 @@ class VNUserCommands(commands.Cog):
                     )
                 else:
                     updates.append(f"**Rating:** {format_rating(new_rating, new_scale)}")
-                if show_scale_notice:
-                    updates.append(
-                        f"ℹ️ Ratings are now out of {new_scale} by default. Use "
-                        "`/settings` to pick 5, 10 or 100."
-                    )
-                    try:
-                        await mark_scale_notice_seen(self.bot, user_id)
-                    except Exception as e:  # noqa: BLE001
-                        _log.debug("scale notice mark failed: %s", e)
 
             await interaction.followup.send(
                 style.ok(f"Updated log #{log_id}.") + "\n" + "\n".join(updates)
